@@ -242,10 +242,10 @@ def test_load_dir_ignores_non_md(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# DynamicAgentTool integration
+# SpawnSubAgentTool integration
 # ---------------------------------------------------------------------------
 
-def test_dynamic_tool_agent_paths(tmp_path):
+def test_archetype_tool_agent_paths(tmp_path):
     _write(tmp_path, "custom.md", """\
         ---
         name: custom
@@ -256,12 +256,12 @@ def test_dynamic_tool_agent_paths(tmp_path):
         You are custom.
     """)
 
-    from trpc_agent_sdk.agents.dynamic import DynamicAgentTool
-    tool = DynamicAgentTool(agent_paths=[tmp_path])
+    from trpc_agent_sdk.agents.dynamic import SpawnSubAgentTool
+    tool = SpawnSubAgentTool(agent_paths=[tmp_path])
     assert tool.registry.names() == ["default", "custom"]
 
 
-def test_dynamic_tool_agent_paths_duplicate_raises(tmp_path):
+def test_archetype_tool_agent_paths_duplicate_raises(tmp_path):
     _write(tmp_path, "aaa.md", """\
         ---
         name: dup
@@ -277,9 +277,9 @@ def test_dynamic_tool_agent_paths_duplicate_raises(tmp_path):
         Zzz.
     """)
 
-    from trpc_agent_sdk.agents.dynamic import DynamicAgentTool
+    from trpc_agent_sdk.agents.dynamic import SpawnSubAgentTool
     with pytest.raises(ValueError, match="collides"):
-        DynamicAgentTool(agent_paths=[tmp_path])
+        SpawnSubAgentTool(agent_paths=[tmp_path])
 
 
 # ---------------------------------------------------------------------------

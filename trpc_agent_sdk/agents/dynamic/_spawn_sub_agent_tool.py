@@ -4,7 +4,7 @@
 #
 # trpc-agent-python is licensed under the Apache License Version 2.0.
 #
-"""DynamicAgentTool — the LLM-facing tool that creates dynamic sub-agents."""
+"""SpawnSubAgentTool — spawn sub-agents from pre-registered archetype templates."""
 
 from __future__ import annotations
 
@@ -23,8 +23,6 @@ from trpc_agent_sdk.types import FunctionDeclaration
 from trpc_agent_sdk.types import Schema
 from trpc_agent_sdk.types import Type
 
-# SubAgentArchetype's nesting check imports DynamicAgentTool lazily, so importing
-# BaseTool from the top-level tools package here does not introduce a cycle.
 from ._archetype import SubAgentArchetype
 from ._defaults import DEFAULT_AGENT
 from ._description import render_tool_description
@@ -34,23 +32,24 @@ from ._runner import run_subagent
 from ._sub_agent_config import SubAgentConfig
 
 
-class DynamicAgentTool(BaseTool):
-    """Tool that lets an LlmAgent spawn fresh, isolated sub-agents.
+class SpawnSubAgentTool(BaseTool):
+    """Tool for spawning pre-defined archetype-based sub-agents.
 
-    Add an instance of this tool to ``LlmAgent.tools`` to enable dynamic
-    sub-agent spawning. Pre-built archetypes (``DEFAULT_AGENT``,
-    ``GENERAL_PURPOSE_AGENT``, ``EXPLORE_AGENT``, ``PLAN_AGENT``) are
-    exported from the package for manual composition; only ``default``
-    is auto-registered. ``general-purpose`` / ``Explore`` / ``Plan`` are
-    opt-in via ``agents=[...]``.
+    Each archetype has a locked instruction, tool set, and model — the LLM
+    selects which archetype to use and writes the task prompt, but cannot
+    redefine the archetype's role or capabilities at call time.
+
+    Pre-built archetypes (``DEFAULT_AGENT``, ``GENERAL_PURPOSE_AGENT``,
+    ``EXPLORE_AGENT``, ``PLAN_AGENT``) are exported from the package for
+    manual composition; only ``default`` is auto-registered.
 
     Archetypes can be loaded from ``*.md`` files::
 
         ---
         name: my-researcher
         description: Use this agent for deep research tasks.
-        tools:            # optional; if omitted, the sub-agent inherits
-          - Read          # the parent agent's tool surface
+        tools:            # optional; if omitted, sub-agent inherits parent tools
+          - Read
           - websearch
         ---
 
@@ -65,11 +64,11 @@ class DynamicAgentTool(BaseTool):
             tool names in MD frontmatter (``agent_paths``). Merged with the
             built-in whitelist; custom entries take precedence.
         with_default: Whether to register the built-in ``default``
-            archetype as a universal fallback.
+            archetype as a universal fallback. Defaults to ``True``;
+            set to ``False`` when you want full control over the archetype catalog.
         agent_config: :class:`SubAgentConfig` applied to every spawned
             sub-agent. Only non-``None`` fields are forwarded to the
-            ``LlmAgent`` constructor. ``model`` is resolved with priority
-            ``SubAgentConfig.model`` > parent model.
+            ``LlmAgent`` constructor.
         skip_summarization: When ``True``, the parent agent's LLM loop exits
             immediately after the sub-agent returns, saving the token cost of
             a final summarization turn.
@@ -112,7 +111,7 @@ class DynamicAgentTool(BaseTool):
         self._skip_summarization = skip_summarization
         self._agent_config = agent_config
         rendered = render_tool_description(registry)
-        super().__init__(name="dynamic_agent", description=rendered,
+        super().__init__(name="spawn_subagent", description=rendered,
                          filters_name=filters_name, filters=filters)
 
     @property
@@ -131,16 +130,15 @@ class DynamicAgentTool(BaseTool):
                         type=Type.STRING,
                         enum=self._registry.names(),
                         description=(
-                            "Which archetype to spawn. See tool description "
-                            "for capabilities of each."
+                            "The type of specialized agent to use for this task. "
+                            "See tool description for capabilities of each."
                         ),
                     ),
                     "prompt": Schema(
                         type=Type.STRING,
                         description=(
-                            "Full task prompt for the sub-agent. The sub-agent "
-                            "has no access to this conversation's history, so "
-                            "include all needed context."
+                            "The task for the sub-agent. Include all the "
+                            "context it needs to complete the task on its own."
                         ),
                     ),
                     "description": Schema(
@@ -168,7 +166,7 @@ class DynamicAgentTool(BaseTool):
         )
         if include_parent_history:
             instruction = (
-                "When using `dynamic_agent`: The sub-agent can see the "
+                "When using `spawn_subagent`: The sub-agent can see the "
                 "current conversation's history. Use it when delegated "
                 "tool work should run in a child invocation while "
                 "continuing from the current conversation. Still describe "
@@ -176,7 +174,7 @@ class DynamicAgentTool(BaseTool):
             )
         else:
             instruction = (
-                "When using `dynamic_agent`: The sub-agent has no memory "
+                "When using `spawn_subagent`: The sub-agent has no memory "
                 "of this conversation. Use it for self-contained tool "
                 "work, multiple independent subtasks, or any task where "
                 "delegating keeps the parent conversation focused instead "
@@ -223,4 +221,4 @@ class DynamicAgentTool(BaseTool):
         )
 
 
-__all__ = ["DynamicAgentTool"]
+__all__ = ["SpawnSubAgentTool"]

@@ -157,6 +157,7 @@ def _build_sub_agent(
     archetype: SubAgentArchetype,
     parent_ctx: InvocationContext,
     agent_config = None,
+    tool_filter: Optional[list] = None,
 ) -> LlmAgent:
     if archetype.tools is None:
         # Inherit the full tool surface of the parent agent. BaseTool instances
@@ -171,9 +172,25 @@ def _build_sub_agent(
     else:
         tools = _materialize_tools(archetype.tools)
 
-    # Always strip DynamicAgentTool from the sub-agent's tool surface,
-    # preventing sub-agents from spawning further sub-agents (1-level cap).
-    tools = [t for t in tools if type(t).__name__ != "DynamicAgentTool"]
+    # Always strip SpawnSubAgentTool and DynamicAgentTool from the sub-agent's
+    # tool surface, preventing sub-agents from spawning further sub-agents
+    # (1-level cap).
+    tools = [t for t in tools if type(t).__name__ not in ("DynamicAgentTool", "SpawnSubAgentTool")]
+
+    # Apply optional name-based tool filter from the LLM. BaseToolSet wrappers
+    # are always kept (they are infrastructure, not selectable by name).
+    if tool_filter is not None:
+        name_map = {}
+        base_sets: list = []
+        for t in tools:
+            if isinstance(t, _BorrowedToolSet):
+                base_sets.append(t)
+                continue
+            name = getattr(t, 'name', None)
+            if name:
+                name_map[name] = t
+        filtered = [name_map[n] for n in tool_filter if n in name_map]
+        tools = filtered + base_sets
 
     # archetype.name may contain hyphens (e.g. "general-purpose"); LlmAgent.name
     # must be a Python identifier, so normalize hyphens to underscores.
@@ -244,6 +261,7 @@ async def run_subagent(
     archetype: SubAgentArchetype,
     prompt: str,
     agent_config = None,
+    tool_filter: Optional[list] = None,
 ) -> Union[str, dict]:
     """Spawn an isolated sub-agent and return its final assistant text.
 
@@ -257,7 +275,8 @@ async def run_subagent(
     from trpc_agent_sdk.runners import Runner
 
     try:
-        sub_agent = _build_sub_agent(archetype, parent_ctx, agent_config=agent_config)
+        sub_agent = _build_sub_agent(archetype, parent_ctx,
+                                     agent_config=agent_config, tool_filter=tool_filter)
     except Exception as ex:  # noqa: BLE001
         logger.error("sub-agent build failed: %s", ex, exc_info=True)
         return {"status": "error", "message": str(ex)}

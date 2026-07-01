@@ -4,6 +4,6 @@
 #
 # trpc-agent-python is licensed under the Apache License Version 2.0.
 #
-""" Orchestrator instruction for the dynamic_subagent example."""
+"""Parent agent instruction for the spawn_subagent example."""
 
-INSTRUCTION = "You are a helpful coding assistant."
+INSTRUCTION = "You are a software engineer helping with codebase questions."

@@ -4,7 +4,7 @@
 #
 # trpc-agent-python is licensed under the Apache License Version 2.0.
 #
-"""Run the dynamic sub-agent demo.
+"""Run the spawn_subagent demo.
 
 Usage::
 
@@ -12,7 +12,7 @@ Usage::
     python run_agent.py --mode code      # code-defined security-auditor + Explore/Plan
     python run_agent.py --mode md        # MD-defined security-auditor + Explore/Plan
 
-The demo points sub-agents at the shared sample repo (``../sample_repo/``)
+The demo points sub-agents at the shared sample repo (``./sample_repo/``)
 so output is fast, predictable, and never depends on the larger
 trpc-agent-python codebase.
 """
@@ -45,7 +45,7 @@ def _truncate(text: str, max_len: int = 200) -> str:
     return text[:max_len] + f"\n... (truncated, total {len(text)} chars)"
 
 
-# Queries per mode — simple tasks (orchestrator does directly) vs complex
+# Queries per mode — simple tasks (parent handles directly) vs complex
 # tasks (delegated to a sub-agent).
 _SHARED_AGENT_QUERIES = [
     # Triggers: security-auditor
@@ -56,16 +56,11 @@ _SHARED_AGENT_QUERIES = [
     "How does authentication and user identity work in this codebase? "
     "I need to understand every file and function involved across "
     "multiple naming conventions.",
-    # Triggers: Plan (built-in archetype)
-    "Design an implementation plan for adding regional tax rate support. "
-    "The key files are cart.py (tax calculation), auth.py (user identity), "
-    "and db.py (order storage). I need a step-by-step strategy that "
-    "considers architectural trade-offs.",
 ]
 
 _QUERIES = {
     "default": [
-        # Simple task: orchestrator handles directly (ReadTool), no sub-agent.
+        # Simple task: parent handles directly (ReadTool), no sub-agent.
         "What does the file auth.py do? Give me a one-sentence summary.",
         # Triggers: default archetype (explicit "Use a sub-agent" in the query).
         "Use a sub-agent to explore this codebase: find all functions that "
@@ -78,7 +73,7 @@ _QUERIES = {
 
 
 async def run_demo(mode: str):
-    app_name = "dynamic_subagent_demo"
+    app_name = "spawn_subagent_demo"
 
     if mode == "code":
         from agent.agent import create_code_agent
@@ -105,12 +100,12 @@ async def run_demo(mode: str):
         )
 
         print(f"\n{'=' * 60}")
-        print(f"🆔 Mode: {mode} | Session ID: {current_session_id[:8]}...")
+        print(f"\U0001F194 Mode: {mode} | Session ID: {current_session_id[:8]}...")
         print(f"{'-' * 60}")
-        print(f"📝 User: {query}")
+        print(f"\U0001F4DD User: {query}")
 
         user_content = Content(parts=[Part.from_text(text=query)])
-        print("🤖 Assistant: ", end="", flush=True)
+        print("\U0001F916 Assistant: ", end="", flush=True)
         async for event in runner.run_async(
             user_id=user_id,
             session_id=current_session_id,
@@ -126,9 +121,9 @@ async def run_demo(mode: str):
                         if part.thought:
                             continue
                         if part.function_call:
-                            print(f"\n\n🔧 [Invoke Tool:: {part.function_call.name}{(_truncate(part.function_call.args))}]\n")
+                            print(f"\n\n\U0001F527 [Invoke Tool:: {part.function_call.name}{(_truncate(part.function_call.args))}]\n")
                         elif part.function_response:
-                            print(f"\n📊 [Tool Result: {_truncate(part.function_response.response)}]\n")
+                            print(f"\n\U0001F4CA [Tool Result: {_truncate(part.function_response.response)}]\n")
 
         print(f"\n{'─' * 60}\n")
 
@@ -136,7 +131,7 @@ async def run_demo(mode: str):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Dynamic sub-agent demo")
+    parser = argparse.ArgumentParser(description="SpawnSubAgentTool demo")
     parser.add_argument(
         "--mode", choices=["default", "code", "md"], default="default",
         help="Which agent configuration to run (default: default)"

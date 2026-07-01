@@ -4,7 +4,7 @@
 #
 # trpc-agent-python is licensed under the Apache License Version 2.0.
 #
-"""Tests for DynamicAgentTool — schema and parameter validation."""
+"""Tests for DynamicAgentTool — on-the-fly sub-agent creation with LLM-written instruction."""
 
 from __future__ import annotations
 
@@ -12,144 +12,73 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from trpc_agent_sdk.agents.dynamic import DEFAULT_AGENT
-from trpc_agent_sdk.agents.dynamic import EXPLORE_AGENT
-from trpc_agent_sdk.agents.dynamic import GENERAL_PURPOSE_AGENT
-from trpc_agent_sdk.agents.dynamic import PLAN_AGENT
 from trpc_agent_sdk.agents.dynamic import DynamicAgentTool
-from trpc_agent_sdk.agents.dynamic import SubAgentArchetype
 from trpc_agent_sdk.agents.dynamic import SubAgentConfig
-from trpc_agent_sdk.tools import ReadTool
-
-
-def _custom_archetype(name: str = "custom") -> SubAgentArchetype:
-    return SubAgentArchetype(
-        name=name,
-        description=f"a custom archetype {name}",
-        instruction="be helpful",
-        tools=(ReadTool,),
-    )
 
 
 def _make_tool_context():
     return MagicMock()
 
 
-def test_default_construction_registers_default() -> None:
+def test_constructor_minimal() -> None:
+    """DynamicAgentTool() should construct with no arguments."""
     t = DynamicAgentTool()
-    assert t.registry.names() == ["default"]
+    assert t.name == "dynamic_agent"
+    assert t._agent_config is None
+    assert t._skip_summarization is False
 
 
-def test_agents_appended() -> None:
-    t = DynamicAgentTool(agents=[_custom_archetype()])
-    assert t.registry.names() == ["default", "custom"]
+def test_constructor_with_config() -> None:
+    t = DynamicAgentTool(agent_config=SubAgentConfig(parallel_tool_calls=True))
+    assert t._agent_config.parallel_tool_calls is True
 
 
-def test_agent_name_collision_rejected() -> None:
-    with pytest.raises(ValueError, match="collides"):
-        DynamicAgentTool(agents=[_custom_archetype("default")])
+def test_constructor_skip_summarization() -> None:
+    t = DynamicAgentTool(skip_summarization=True)
+    assert t._skip_summarization is True
 
 
-def test_general_purpose_is_not_auto_registered() -> None:
-    """``general-purpose`` is opt-in via ``agents=[GENERAL_PURPOSE_AGENT]``."""
-    t = DynamicAgentTool()
-    assert "general-purpose" not in t.registry.names()
+def test_constructor_custom_name() -> None:
+    t = DynamicAgentTool(name="my_dynamic")
+    assert t.name == "my_dynamic"
 
 
-def test_general_purpose_can_be_added_explicitly() -> None:
-    t = DynamicAgentTool(agents=[GENERAL_PURPOSE_AGENT])
-    assert t.registry.names() == ["default", "general-purpose"]
-
-
-def test_agent_paths_appended(tmp_path) -> None:
-    md = tmp_path / "explorer.md"
-    md.write_text(
-        "---\nname: explorer\ndescription: An explorer agent.\n---\n\nExplore."
-    )
-    t = DynamicAgentTool(agent_paths=[tmp_path])
-    assert t.registry.names() == ["default", "explorer"]
-
-
-def test_agent_paths_collision_raises(tmp_path) -> None:
-    md = tmp_path / "clash.md"
-    md.write_text(
-        "---\nname: default\ndescription: Collides with built-in.\n---\n\nClash."
-    )
-    with pytest.raises(ValueError, match="collides"):
-        DynamicAgentTool(agent_paths=[tmp_path])
-
-
-def test_with_default_false_is_empty() -> None:
-    t = DynamicAgentTool(with_default=False)
-    assert t.registry.names() == []
-
-
-def test_with_default_false_with_agents(tmp_path) -> None:
-    t = DynamicAgentTool(agents=[_custom_archetype()], with_default=False)
-    assert t.registry.names() == ["custom"]
-
-
-def test_with_default_false_with_agent_paths(tmp_path) -> None:
-    md = tmp_path / "explorer.md"
-    md.write_text(
-        "---\nname: explorer\ndescription: An explorer agent.\n---\n\nExplore."
-    )
-    t = DynamicAgentTool(agent_paths=[tmp_path], with_default=False)
-    assert t.registry.names() == ["explorer"]
+def test_constructor_custom_description() -> None:
+    t = DynamicAgentTool(description="A custom tool description.")
+    assert t.description == "A custom tool description."
 
 
 def test_declaration_schema_shape() -> None:
-    t = DynamicAgentTool(agents=[_custom_archetype()])
+    t = DynamicAgentTool()
     decl = t._get_declaration()
     assert decl.name == "dynamic_agent"
     props = decl.parameters.properties
-    assert set(decl.parameters.required) == {"prompt", "description"}
-    assert props["subagent_type"].enum == ["default", "custom"]
+    assert decl.parameters.required == ["prompt"]
+    assert "instruction" in props
+    assert "prompt" in props
+    assert "description" not in props
 
 
-def test_description_contains_default() -> None:
+def test_description_contains_key_text() -> None:
     t = DynamicAgentTool()
-    assert "- default:" in t.description
-
-
-def test_explicit_defaults_can_register_all_four() -> None:
-    t = DynamicAgentTool(
-        agents=[GENERAL_PURPOSE_AGENT, EXPLORE_AGENT, PLAN_AGENT],
-        with_default=False,
-    )
-    assert t.registry.names() == ["general-purpose", "Explore", "Plan"]
+    assert "Run one short-lived sub-agent" in t.description
+    assert "created on the fly" in t.description
+    assert "IMPORTANT" in t.description
 
 
 @pytest.mark.asyncio
-async def test_unknown_subagent_type_returns_error_when_no_default() -> None:
-    t = DynamicAgentTool(with_default=False)
-    ctx = _make_tool_context()
-    result = await t._run_async_impl(
-        tool_context=ctx,
-        args={"subagent_type": "nope", "prompt": "hi", "description": "x"},
-    )
-    assert result["status"] == "error"
-    assert "unknown subagent_type" in result["message"]
-
-
-@pytest.mark.asyncio
-async def test_missing_subagent_type_falls_back_to_default() -> None:
+async def test_empty_instruction_falls_back_to_default() -> None:
+    """Empty/whitespace instruction falls back to default, proceeds to run_subagent."""
     t = DynamicAgentTool()
     ctx = _make_tool_context()
-    # subagent_type missing entirely — should fallback to default
-    # and proceed (will fail later trying to actually run, but validation passes)
     result = await t._run_async_impl(
         tool_context=ctx,
-        args={"prompt": "hi", "description": "x"},
+        args={"instruction": "   ", "prompt": "do something"},
     )
-    # Falls back to default, tries to run sub-agent.
-    # Since ctx is a mock, it will raise an error from run_subagent,
-    # but importantly it should NOT be the "unknown subagent_type" error.
-    assert not (
-        isinstance(result, dict)
-        and result.get("status") == "error"
-        and "unknown subagent_type" in str(result.get("message"))
-    )
+    # Should NOT be an instruction validation error — falls back and tries to run.
+    assert not (isinstance(result, dict)
+                and result.get("status") == "error"
+                and "instruction" in str(result.get("message")))
 
 
 @pytest.mark.asyncio
@@ -158,72 +87,53 @@ async def test_empty_prompt_returns_error() -> None:
     ctx = _make_tool_context()
     result = await t._run_async_impl(
         tool_context=ctx,
-        args={"subagent_type": "default", "prompt": "   ", "description": "x"},
+        args={"instruction": "You are a helpful agent.", "prompt": "   "},
     )
     assert result["status"] == "error"
-    assert "non-empty" in result["message"]
+    assert "prompt" in result["message"]
 
 
-def test_default_agent_tools_is_none() -> None:
-    """DEFAULT_AGENT.tools should be None (inherit parent tools)."""
-    assert DEFAULT_AGENT.tools is None
-
-
-def test_archetype_tools_none_ok() -> None:
-    """SubAgentArchetype should accept tools=None."""
-    a = SubAgentArchetype(
-        name="test-none",
-        description="tools=None archetype",
-        instruction="be helpful",
-        tools=None,
-    )
-    assert a.tools is None
-
-
-def test_description_shows_all_for_none_tools() -> None:
-    """When tools=None, the description should show (Tools: (all))."""
+@pytest.mark.asyncio
+async def test_missing_instruction_uses_default() -> None:
+    """Missing instruction uses fallback instead of returning error."""
     t = DynamicAgentTool()
-    assert "(Tools: (all))" in t.description
-
-
-def test_tool_mapping_custom_tool_in_md(tmp_path) -> None:
-    """MD-defined archetype with a custom tool resolved via tool_mapping."""
-    md = tmp_path / "custom.md"
-    md.write_text(
-        "---\nname: custom\ndescription: Custom tool.\ntools:\n  - MyTool\n---\n\nBe helpful."
+    ctx = _make_tool_context()
+    result = await t._run_async_impl(
+        tool_context=ctx,
+        args={"prompt": "do something"},
     )
-    t = DynamicAgentTool(agent_paths=[tmp_path], tool_mapping={"MyTool": ReadTool})
-    archetype = t.registry.get("custom")
-    assert archetype is not None
-    assert archetype.tools == (ReadTool,)
+    # Should NOT be a validation error — falls back and tries to run.
+    assert not (isinstance(result, dict)
+                and result.get("status") == "error"
+                and "instruction" in str(result.get("message")))
 
 
-def test_tool_mapping_unknown_in_md_still_errors(tmp_path) -> None:
-    """Unknown tool name raises ValueError even with unrelated tool_mapping."""
-    md = tmp_path / "bad.md"
-    md.write_text(
-        "---\nname: bad\ndescription: Bad.\ntools:\n  - NotReal\n---\n\nBody."
+@pytest.mark.asyncio
+async def test_valid_args_creates_synthetic_archetype() -> None:
+    """Valid call creates a synthetic SubAgentArchetype and passes to run_subagent."""
+    t = DynamicAgentTool()
+    ctx = _make_tool_context()
+    # With a mock context, run_subagent will raise; we just verify
+    # the error is NOT a validation error — meaning the synthetic
+    # archetype was created and run_subagent was called.
+    result = await t._run_async_impl(
+        tool_context=ctx,
+        args={
+            "instruction": "You are a database expert.",
+            "prompt": "Analyze the schema.",
+        },
     )
-    with pytest.raises(ValueError, match="unknown tool"):
-        DynamicAgentTool(agent_paths=[tmp_path], tool_mapping={"MyTool": ReadTool})
+    # Should NOT be a validation error.
+    assert not (isinstance(result, dict)
+                and result.get("status") == "error"
+                and "non-empty" in str(result.get("message")))
 
 
-def test_md_archetype_no_tools_inherits(tmp_path) -> None:
-    """MD-defined archetype without tools: should get tools=None."""
-    md = tmp_path / "explorer.md"
-    md.write_text(
-        "---\nname: explorer\ndescription: No tools specified.\n---\n\nExplore stuff."
-    )
-    t = DynamicAgentTool(agent_paths=[tmp_path])
-    archetype = t.registry.get("explorer")
-    assert archetype is not None
-    assert archetype.tools is None
-
-
-def test_agent_config_accepted_by_constructor() -> None:
-    """DynamicAgentTool accepts SubAgentConfig without error."""
-    t = DynamicAgentTool(agent_config=SubAgentConfig(parallel_tool_calls=True))
-    assert t._agent_config.parallel_tool_calls is True
+def test_has_no_registry() -> None:
+    """DynamicAgentTool should not have a registry — it uses synthetic archetypes."""
+    t = DynamicAgentTool()
+    assert not hasattr(t, "registry")
+    assert not hasattr(t, "_registry")
 
 
 @pytest.mark.asyncio
@@ -244,7 +154,7 @@ async def test_process_request_with_parent_history() -> None:
 
 @pytest.mark.asyncio
 async def test_process_request_without_parent_history() -> None:
-    """process_request appends no-history instruction when include_parent_history=False or agent_config=None."""
+    """process_request appends no-history instruction when agent_config=None."""
     t = DynamicAgentTool()
     llm_request = MagicMock()
     llm_request.append_instructions = MagicMock()
@@ -260,14 +170,12 @@ async def test_process_request_without_parent_history() -> None:
 @pytest.mark.asyncio
 async def test_skip_summarization_sets_event_action() -> None:
     """When skip_summarization=True, _run_async_impl sets skip_summarization on event_actions."""
-    t = DynamicAgentTool(with_default=False, skip_summarization=True)
+    t = DynamicAgentTool(skip_summarization=True)
     ctx = _make_tool_context()
     ctx.event_actions.skip_summarization = False
 
-    # With no agents registered, this will return an error — but
-    # skip_summarization should still be set before that happens.
     await t._run_async_impl(
         tool_context=ctx,
-        args={"subagent_type": "nope", "prompt": "hi", "description": "x"},
+        args={"prompt": "   "},
     )
     assert ctx.event_actions.skip_summarization is True

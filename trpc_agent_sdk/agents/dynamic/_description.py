@@ -4,7 +4,7 @@
 #
 # trpc-agent-python is licensed under the Apache License Version 2.0.
 #
-"""Render the dynamic_agent tool description from a SubAgentRegistry.
+"""Render the spawn_subagent tool description from a SubAgentRegistry.
 
 The rendered description embeds each archetype's name, description text,
 and a ``(Tools: ...)`` suffix derived from its tool list — giving the

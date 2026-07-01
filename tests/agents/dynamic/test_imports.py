@@ -13,6 +13,7 @@ import sys
 
 def test_public_imports() -> None:
     from trpc_agent_sdk.agents.dynamic import (
+        SpawnSubAgentTool,
         DEFAULT_AGENT,
         EXPLORE_AGENT,
         GENERAL_PURPOSE_AGENT,
@@ -21,6 +22,7 @@ def test_public_imports() -> None:
         SubAgentArchetype,
         SubAgentRegistry,
     )
+    assert SpawnSubAgentTool is not None
     assert DynamicAgentTool is not None
     assert SubAgentArchetype is not None
     assert SubAgentRegistry is not None

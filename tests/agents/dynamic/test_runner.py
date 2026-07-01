@@ -174,22 +174,27 @@ def test_build_sub_agent_no_output_key() -> None:
     assert agent.output_key is None
 
 
-def test_build_sub_agent_filters_out_dynamic_agent_tool() -> None:
-    """Runtime safety net: DynamicAgentTool must never reach the sub-agent's
-    tool surface, regardless of how the archetype was constructed.
-    Enforces the 1-level nesting cap at build time (B1 is the construction-time
-    check; this is the runtime guard).
+def test_build_sub_agent_filters_out_nesting_tools() -> None:
+    """Neither SpawnSubAgentTool nor DynamicAgentTool must reach the sub-agent.
+
+    When tools=None (inherit parent), the parent may have either tool. The
+    1-level cap must strip both.
     """
-    arc = SubAgentArchetype(
-        name="custom",
-        description="d",
-        instruction="i",
-        tools=(ReadTool,),
-    )
+    from trpc_agent_sdk.agents.dynamic import DynamicAgentTool
+    from trpc_agent_sdk.agents.dynamic import SpawnSubAgentTool
+
+    arc = SubAgentArchetype(name="custom", description="d", instruction="i", tools=None)
     parent_ctx = _parent_ctx_with_model("test-dynamic-parent")
+    parent_ctx.agent.tools = [
+        ReadTool(),
+        SpawnSubAgentTool(with_default=False),
+        DynamicAgentTool(),
+    ]
     agent = _build_sub_agent(arc, parent_ctx)
     tool_names = [type(t).__name__ for t in agent.tools]
     assert "DynamicAgentTool" not in tool_names
+    assert "SpawnSubAgentTool" not in tool_names
+    assert "ReadTool" in tool_names  # inherited tool still present
 
 
 # --- _BorrowedToolSet -------------------------------------------------------

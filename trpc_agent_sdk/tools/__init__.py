@@ -13,6 +13,7 @@ from trpc_agent_sdk.abc import ToolSetABC as BaseToolSet
 if TYPE_CHECKING:
     # Lazy re-export — see ``_LAZY_REEXPORTS`` below.
     from trpc_agent_sdk.agents.dynamic import DynamicAgentTool as DynamicAgentTool  # noqa: F401
+    from trpc_agent_sdk.agents.dynamic import SpawnSubAgentTool as SpawnSubAgentTool  # noqa: F401
 
 from ._agent_tool import AGENT_TOOL_APP_NAME_SUFFIX
 from ._agent_tool import AgentTool
@@ -181,6 +182,7 @@ __all__ = [
 # here for discoverability. Not in ``__all__`` so ``import *`` stays lazy.
 _LAZY_REEXPORTS = {
     "DynamicAgentTool": ("trpc_agent_sdk.agents.dynamic", "DynamicAgentTool"),
+    "SpawnSubAgentTool": ("trpc_agent_sdk.agents.dynamic", "SpawnSubAgentTool"),
 }
 
 

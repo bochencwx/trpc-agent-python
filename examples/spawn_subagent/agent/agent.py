@@ -4,19 +4,19 @@
 #
 # trpc-agent-python is licensed under the Apache License Version 2.0.
 #
-"""Orchestrator agents demonstrating dynamic sub-agent spawning.
+"""Coding assistant configurations demonstrating SpawnSubAgentTool.
 
 Three configurations are provided, selectable via ``--mode`` on the
 command line:
 
-- ``default`` — zero-config: ``DynamicAgentTool()``. The ``default``
-  archetype (neutral task executor, inherits parent tools) is the only
+- ``default`` — zero-config: ``SpawnSubAgentTool()``. The ``default``
+  archetype (neutral task executor, inherits the assistant's tools) is the only
   auto-registered archetype.
 - ``code`` — ``security-auditor`` defined in code via ``SubAgentArchetype``,
-  alongside built-in ``Explore`` / ``Plan`` and ``default``.
+  alongside built-in ``Explore`` / ``Plan``.
 - ``md`` — ``security-auditor`` loaded from ``.trpc_agents/security-auditor.md``,
-  alongside built-in ``Explore`` / ``Plan`` and ``default``, showing how
-  MD-defined and built-in archetypes co-exist.
+  alongside built-in ``Explore`` / ``Plan``, showing how MD-defined and
+  built-in archetypes co-exist.
 """
 
 import os
@@ -25,9 +25,9 @@ from trpc_agent_sdk.agents import LlmAgent
 from trpc_agent_sdk.agents.dynamic import EXPLORE_AGENT
 from trpc_agent_sdk.agents.dynamic import PLAN_AGENT
 from trpc_agent_sdk.agents.dynamic import SubAgentArchetype
+from trpc_agent_sdk.tools import SpawnSubAgentTool
 from trpc_agent_sdk.models import LLMModel
 from trpc_agent_sdk.models import OpenAIModel
-from trpc_agent_sdk.tools import DynamicAgentTool
 from trpc_agent_sdk.tools import GlobTool
 from trpc_agent_sdk.tools import GrepTool
 from trpc_agent_sdk.tools import ReadTool
@@ -42,19 +42,17 @@ def _create_model() -> LLMModel:
 
 
 def create_default_agent() -> LlmAgent:
-    """Zero-config orchestrator with base tools + dynamic sub-agent spawning.
+    """Zero-config coding assistant: only the ``default`` archetype is registered.
 
-    The orchestrator handles simple tasks (read a file, search a symbol)
-    directly. Complex or multi-step tasks are delegated to the ``default``
-    sub-agent (auto-registered), which is a neutral task executor
-    inheriting the full tool surface of the orchestrator.
+    Simple tasks are handled directly. Complex tasks are dispatched
+    to the ``default`` sub-agent, which inherits the assistant's tools.
     """
     return LlmAgent(
-        name="orchestrator",
-        description="Orchestrator with built-in default sub-agent.",
+        name="coding_assistant",
+        description="Coding assistant with spawn_subagent in zero-config mode.",
         model=_create_model(),
         instruction=INSTRUCTION,
-        tools=[ReadTool(), GlobTool(), GrepTool(), DynamicAgentTool()],
+        tools=[ReadTool(), GlobTool(), GrepTool(), SpawnSubAgentTool()],
     )
 
 
@@ -77,24 +75,20 @@ _SECURITY_AUDITOR = SubAgentArchetype(
 
 
 def create_code_agent() -> LlmAgent:
-    """Orchestrator with built-in Explore/Plan + a code-defined security-auditor.
+    """Coding assistant with code-defined security-auditor + built-in Explore/Plan.
 
     Simple tasks are handled directly. Security review tasks are auto-routed
     to ``security-auditor``, code exploration to ``Explore``, and planning
-    tasks to ``Plan``. ``default`` serves as fallback for anything else.
+    tasks to ``Plan``. ``default`` serves as fallback.
     """
     return LlmAgent(
-        name="orchestrator",
-        description="Orchestrator with Explore, Plan, and custom security-auditor archetypes.",
+        name="coding_assistant",
+        description="Coding assistant with Explore, Plan, and custom archetypes.",
         model=_create_model(),
         instruction=INSTRUCTION,
         tools=[
             ReadTool(), GlobTool(), GrepTool(),
-            DynamicAgentTool(agents=[
-                _SECURITY_AUDITOR,
-                EXPLORE_AGENT,
-                PLAN_AGENT,
-            ]),
+            SpawnSubAgentTool(agents=[_SECURITY_AUDITOR, EXPLORE_AGENT, PLAN_AGENT]),
         ],
     )
 
@@ -103,24 +97,19 @@ _AGENTS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".
 
 
 def create_md_agent() -> LlmAgent:
-    """Orchestrator with MD-defined security-auditor + built-in Explore/Plan.
+    """Coding assistant with MD-defined security-auditor + built-in Explore/Plan.
 
-    Simple tasks are handled directly with Read/Glob/Grep. Security
-    review tasks are auto-routed to the MD-defined ``security-auditor``,
-    code exploration to ``Explore``, and planning tasks to ``Plan``.
-    ``default`` serves as fallback for anything else.
+    Simple tasks are handled directly. Security review tasks are auto-routed
+    to the MD-defined ``security-auditor``. ``default`` serves as fallback.
     """
     return LlmAgent(
-        name="orchestrator",
-        description="Orchestrator with Explore, Plan, and MD-defined security-auditor archetypes.",
+        name="coding_assistant",
+        description="Coding assistant with Explore, Plan, and MD-defined archetype.",
         model=_create_model(),
         instruction=INSTRUCTION,
         tools=[
             ReadTool(), GlobTool(), GrepTool(),
-            DynamicAgentTool(
-                agents=[EXPLORE_AGENT, PLAN_AGENT],
-                agent_paths=[_AGENTS_PATH],
-            ),
+            SpawnSubAgentTool(agents=[EXPLORE_AGENT, PLAN_AGENT], agent_paths=[_AGENTS_PATH]),
         ],
     )
 
